@@ -18,9 +18,12 @@ from formatter import (
     format_liquidation,
     format_funding,
     format_transfer,
+    format_aggregated_fills,
     short_addr,
 )
 from ws_manager import WSManager
+from aggregator import FillAggregator
+from hyperliquid_api import get_position_info
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +34,7 @@ logger = logging.getLogger(__name__)
 ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
 ws_manager: WSManager | None = None
+fill_aggregator: FillAggregator | None = None
 app: Application | None = None
 
 
@@ -42,12 +46,37 @@ def auth(func):
     return wrapper
 
 
+async def send_aggregated_fills(wallet: str, fills: list[dict]):
+    if not storage.is_event_enabled(wallet, "fills"):
+        return
+
+    if not fills:
+        return
+
+    first = fills[0]
+    coin = first.get("coin", "")
+    direction = first.get("dir", "")
+
+    position_info = None
+    if direction in ("Open Long", "Open Short"):
+        position_info = await get_position_info(wallet, coin)
+
+    text = format_aggregated_fills(fills, wallet, position_info)
+    try:
+        await app.bot.send_message(
+            chat_id=TELEGRAM_USER_ID,
+            text=f"```\n{text}\n```",
+            parse_mode="Markdown",
+        )
+    except Exception as e:
+        logger.error(f"Failed to send aggregated fill notification: {e}")
+
+
 async def send_notification(wallet: str, event_type: str, data: dict):
     if not storage.is_event_enabled(wallet, event_type):
         return
 
     formatters = {
-        "fills": format_fill,
         "liquidations": format_liquidation,
         "funding": format_funding,
         "transfers": format_transfer,
@@ -194,8 +223,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def post_init(application: Application):
-    global ws_manager
-    ws_manager = WSManager(on_event=send_notification)
+    global ws_manager, fill_aggregator
+    fill_aggregator = FillAggregator(on_batch=send_aggregated_fills)
+    ws_manager = WSManager(
+        on_event=send_notification,
+        on_fill=fill_aggregator.add_fill,
+    )
     await ws_manager.start()
 
     wallet_count = len(storage.get_wallets())

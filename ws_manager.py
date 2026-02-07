@@ -19,8 +19,13 @@ SUBSCRIPTION_TYPES = [
 
 
 class WSManager:
-    def __init__(self, on_event: Callable[[str, str, dict], Awaitable[None]]):
+    def __init__(
+        self,
+        on_event: Callable[[str, str, dict], Awaitable[None]],
+        on_fill: Callable[[str, dict], Awaitable[None]] | None = None,
+    ):
         self.on_event = on_event
+        self.on_fill = on_fill
         self._ws = None
         self._running = False
         self._task: asyncio.Task | None = None
@@ -137,6 +142,8 @@ class WSManager:
                     continue
                 if fill.get("liquidation"):
                     await self.on_event(wallet, "liquidations", fill)
+                elif self.on_fill:
+                    await self.on_fill(wallet, fill)
                 else:
                     await self.on_event(wallet, "fills", fill)
 

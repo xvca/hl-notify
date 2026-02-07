@@ -28,6 +28,56 @@ def format_fill(fill: dict, wallet: str) -> str:
     return "\n".join(lines)
 
 
+def format_aggregated_fills(fills: list[dict], wallet: str, position_info: dict | None = None) -> str:
+    if not fills:
+        return ""
+
+    first = fills[0]
+    coin = first.get("coin", "???")
+    side = first.get("side", "").upper()
+    direction = first.get("dir", "")
+
+    total_sz = sum(float(f.get("sz", 0)) for f in fills)
+    total_notional = sum(float(f.get("sz", 0)) * float(f.get("px", 0)) for f in fills)
+    avg_px = total_notional / total_sz if total_sz > 0 else 0
+
+    total_pnl = sum(float(f.get("closedPnl", 0)) for f in fills)
+
+    emoji = "📈" if side == "BUY" else "📉" if side == "SELL" else "📊"
+
+    lines = [
+        f"{emoji} {side} {format_number(total_sz, 4)} {coin} @ ${format_number(avg_px)}",
+    ]
+
+    if direction:
+        lines.append(f"   Direction: {direction}")
+
+    if len(fills) > 1:
+        lines.append(f"   Fills: {len(fills)}")
+
+    if position_info:
+        leverage = position_info.get("leverage")
+        liq_px = position_info.get("liquidation_px")
+
+        if leverage:
+            lines.append(f"   Leverage: {leverage}x")
+
+        if liq_px:
+            try:
+                liq_price = float(liq_px)
+                if liq_price > 0:
+                    lines.append(f"   Liquidation: ${format_number(liq_price)}")
+            except (ValueError, TypeError):
+                pass
+
+    if total_pnl != 0:
+        sign = "+" if total_pnl > 0 else ""
+        lines.append(f"   PnL: {sign}${format_number(total_pnl)}")
+
+    lines.append(f"   Wallet: {short_addr(wallet)}")
+    return "\n".join(lines)
+
+
 def format_liquidation(liq: dict, wallet: str) -> str:
     coin = liq.get("coin", "???")
     sz = float(liq.get("sz", 0))
