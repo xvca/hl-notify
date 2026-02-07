@@ -42,10 +42,26 @@ async def get_position_info(wallet: str, coin: str) -> dict | None:
     return None
 
 
+async def get_market_prices() -> dict[str, float]:
+    try:
+        async with aiohttp.ClientSession() as session:
+            payload = {"type": "allMids"}
+            async with session.post(API_URL, json=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status != 200:
+                    return {}
+                data = await resp.json()
+                return {k: float(v) for k, v in data.items()}
+    except Exception as e:
+        logger.error(f"Failed to fetch market prices: {e}")
+        return {}
+
+
 async def get_all_positions(wallet: str) -> list[dict]:
     data = await get_clearinghouse_state(wallet)
     if not data:
         return []
+
+    prices = await get_market_prices()
 
     positions = []
     for pos in data.get("assetPositions", []):
@@ -55,12 +71,27 @@ async def get_all_positions(wallet: str) -> list[dict]:
         if float(szi) == 0:
             continue
 
+        coin = position.get("coin")
+        entry_px = position.get("entryPx")
+        leverage_dict = position.get("leverage", {})
+        leverage = leverage_dict.get("value")
+
+        margin_used = None
+        if entry_px and leverage:
+            try:
+                notional = abs(float(szi)) * float(entry_px)
+                margin_used = notional / float(leverage)
+            except (ValueError, TypeError, ZeroDivisionError):
+                pass
+
         positions.append({
-            "coin": position.get("coin"),
+            "coin": coin,
             "szi": szi,
-            "leverage": position.get("leverage", {}).get("value"),
+            "leverage": leverage,
             "liquidation_px": position.get("liquidationPx"),
-            "entry_px": position.get("entryPx"),
+            "entry_px": entry_px,
+            "current_px": prices.get(coin),
+            "margin_used": margin_used,
             "unrealized_pnl": position.get("unrealizedPnl"),
             "return_on_equity": position.get("returnOnEquity"),
         })

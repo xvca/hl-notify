@@ -130,8 +130,10 @@ def format_positions(positions: list[dict], wallet: str) -> str:
         emoji = "📈" if szi > 0 else "📉"
 
         entry_px = pos.get("entry_px")
+        current_px = pos.get("current_px")
         leverage = pos.get("leverage")
         liq_px = pos.get("liquidation_px")
+        margin_used = pos.get("margin_used")
         pnl = pos.get("unrealized_pnl")
         roe = pos.get("return_on_equity")
 
@@ -140,8 +142,14 @@ def format_positions(positions: list[dict], wallet: str) -> str:
         if entry_px:
             lines.append(f"   Entry: ${format_number(float(entry_px))}")
 
+        if current_px:
+            lines.append(f"   Current: ${format_number(current_px)}")
+
         if leverage:
             lines.append(f"   Leverage: {leverage}x")
+
+        if margin_used:
+            lines.append(f"   Margin: ${format_number(margin_used)}")
 
         if liq_px:
             try:
