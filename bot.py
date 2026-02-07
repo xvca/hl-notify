@@ -72,12 +72,18 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hyperliquid Notify Bot\n\n"
         "Commands:\n"
+        "/help — Show this help\n"
         "/watch <address> — Add wallet\n"
         "/unwatch <address> — Remove wallet\n"
         "/list — Show watched wallets\n"
         "/events <address> — Toggle event types\n"
         "/status — Connection status"
     )
+
+
+@auth
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await cmd_start(update, context)
 
 
 @auth
@@ -215,6 +221,7 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("watch", cmd_watch))
     app.add_handler(CommandHandler("unwatch", cmd_unwatch))
     app.add_handler(CommandHandler("list", cmd_list))

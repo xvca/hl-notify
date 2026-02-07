@@ -18,6 +18,19 @@ Talk to [@BotFather](https://t.me/BotFather) on Telegram, create a bot, grab the
 
 You also need your Telegram user ID. Send a message to [@userinfobot](https://t.me/userinfobot) to get it.
 
+**Optional: Set up command menu**
+
+To see commands when you type `/` in Telegram, send `/setcommands` to @BotFather, select your bot, then paste:
+
+```
+help - Show available commands
+watch - Add a wallet to monitor
+unwatch - Remove a wallet
+list - Show all watched wallets
+events - Toggle event types for a wallet
+status - Show connection status
+```
+
 ### 2. Configure
 
 ```sh
@@ -67,6 +80,7 @@ python bot.py
 
 ```
 /start          -- usage info
+/help           -- show available commands
 /watch <addr>   -- start watching a wallet
 /unwatch <addr> -- stop watching a wallet
 /list           -- show all watched wallets and their enabled events
