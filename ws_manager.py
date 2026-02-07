@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from typing import Callable, Awaitable
 
 import websockets
@@ -24,6 +25,7 @@ class WSManager:
         self._running = False
         self._task: asyncio.Task | None = None
         self._subscribed_wallets: set[str] = set()
+        self._subscription_times: dict[str, float] = {}
 
     async def start(self):
         if self._running:
@@ -49,12 +51,14 @@ class WSManager:
     async def subscribe(self, wallet: str):
         wallet = wallet.lower()
         self._subscribed_wallets.add(wallet)
+        self._subscription_times[wallet] = time.time()
         if self.connected:
             await self._send_subscriptions(wallet, subscribe=True)
 
     async def unsubscribe(self, wallet: str):
         wallet = wallet.lower()
         self._subscribed_wallets.discard(wallet)
+        self._subscription_times.pop(wallet, None)
         if self.connected:
             await self._send_subscriptions(wallet, subscribe=False)
 
@@ -73,9 +77,23 @@ class WSManager:
     async def _resubscribe_all(self):
         wallets = set(storage.get_wallets().keys())
         self._subscribed_wallets = wallets
+        sub_time = time.time()
         for wallet in wallets:
+            self._subscription_times[wallet] = sub_time
             await self._send_subscriptions(wallet, subscribe=True)
         logger.info(f"Resubscribed to {len(wallets)} wallets")
+
+    def _should_notify(self, wallet: str, event: dict) -> bool:
+        sub_time = self._subscription_times.get(wallet)
+        if sub_time is None:
+            return False
+
+        event_time_ms = event.get("time")
+        if event_time_ms:
+            event_time = event_time_ms / 1000
+            return event_time > sub_time
+
+        return time.time() - sub_time > 3
 
     async def _run_loop(self):
         backoff = 1
@@ -115,6 +133,8 @@ class WSManager:
         if channel == "userFills":
             wallet = data.get("user", "").lower()
             for fill in data.get("fills", []):
+                if not self._should_notify(wallet, fill):
+                    continue
                 if fill.get("liquidation"):
                     await self.on_event(wallet, "liquidations", fill)
                 else:
@@ -123,9 +143,13 @@ class WSManager:
         elif channel == "userFundings":
             wallet = data.get("user", "").lower()
             for funding in data.get("fundings", []):
+                if not self._should_notify(wallet, funding):
+                    continue
                 await self.on_event(wallet, "funding", funding)
 
         elif channel == "userNonFundingLedgerUpdates":
             wallet = data.get("user", "").lower()
             for update in data.get("nonFundingLedgerUpdates", []):
+                if not self._should_notify(wallet, update):
+                    continue
                 await self.on_event(wallet, "transfers", update)

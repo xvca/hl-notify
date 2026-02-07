@@ -192,6 +192,12 @@ async def post_init(application: Application):
     ws_manager = WSManager(on_event=send_notification)
     await ws_manager.start()
 
+    wallet_count = len(storage.get_wallets())
+    await application.bot.send_message(
+        chat_id=TELEGRAM_USER_ID,
+        text=f"🟢 Bot online\nWatching {wallet_count} wallet(s)",
+    )
+
 
 async def post_shutdown(application: Application):
     if ws_manager:
