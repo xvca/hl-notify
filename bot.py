@@ -19,11 +19,12 @@ from formatter import (
     format_funding,
     format_transfer,
     format_aggregated_fills,
+    format_positions,
     short_addr,
 )
 from ws_manager import WSManager
 from aggregator import FillAggregator
-from hyperliquid_api import get_position_info
+from hyperliquid_api import get_position_info, get_all_positions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,6 +107,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/unwatch <address> — Remove wallet\n"
         "/list — Show watched wallets\n"
         "/events <address> — Toggle event types\n"
+        "/positions [address] — Show open positions\n"
         "/status — Connection status"
     )
 
@@ -213,6 +215,29 @@ async def handle_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @auth
+async def cmd_positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args and ETH_ADDRESS_RE.match(context.args[0]):
+        address = context.args[0].lower()
+        if address not in storage.get_wallets():
+            await update.message.reply_text("Wallet not found. /watch it first.")
+            return
+        wallets_to_check = [address]
+    else:
+        wallets_to_check = list(storage.get_wallets().keys())
+
+    if not wallets_to_check:
+        await update.message.reply_text("No wallets being watched. /watch one first.")
+        return
+
+    await update.message.reply_text("Fetching positions...")
+
+    for wallet in wallets_to_check:
+        positions = await get_all_positions(wallet)
+        text = format_positions(positions, wallet)
+        await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+
+
+@auth
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_count = len(storage.get_wallets())
     connected = ws_manager.connected if ws_manager else False
@@ -259,6 +284,7 @@ def main():
     app.add_handler(CommandHandler("unwatch", cmd_unwatch))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("events", cmd_events))
+    app.add_handler(CommandHandler("positions", cmd_positions))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CallbackQueryHandler(handle_toggle))
 

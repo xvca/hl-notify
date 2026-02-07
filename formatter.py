@@ -115,3 +115,52 @@ def format_transfer(transfer: dict, wallet: str) -> str:
         f"   Wallet: {short_addr(wallet)}",
     ]
     return "\n".join(lines)
+
+
+def format_positions(positions: list[dict], wallet: str) -> str:
+    if not positions:
+        return f"No open positions for {short_addr(wallet)}"
+
+    lines = [f"Positions for {short_addr(wallet)}:\n"]
+
+    for pos in positions:
+        coin = pos.get("coin", "???")
+        szi = float(pos.get("szi", 0))
+        side = "LONG" if szi > 0 else "SHORT"
+        emoji = "📈" if szi > 0 else "📉"
+
+        entry_px = pos.get("entry_px")
+        leverage = pos.get("leverage")
+        liq_px = pos.get("liquidation_px")
+        pnl = pos.get("unrealized_pnl")
+        roe = pos.get("return_on_equity")
+
+        lines.append(f"{emoji} {side} {format_number(abs(szi), 4)} {coin}")
+
+        if entry_px:
+            lines.append(f"   Entry: ${format_number(float(entry_px))}")
+
+        if leverage:
+            lines.append(f"   Leverage: {leverage}x")
+
+        if liq_px:
+            try:
+                liq_price = float(liq_px)
+                if liq_price > 0:
+                    lines.append(f"   Liquidation: ${format_number(liq_price)}")
+            except (ValueError, TypeError):
+                pass
+
+        if pnl:
+            pnl_val = float(pnl)
+            sign = "+" if pnl_val > 0 else ""
+            lines.append(f"   PnL: {sign}${format_number(pnl_val)}")
+
+        if roe:
+            roe_val = float(roe)
+            sign = "+" if roe_val > 0 else ""
+            lines.append(f"   ROE: {sign}{format_number(roe_val * 100)}%")
+
+        lines.append("")
+
+    return "\n".join(lines)

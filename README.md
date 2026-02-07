@@ -28,6 +28,7 @@ watch - Add a wallet to monitor
 unwatch - Remove a wallet
 list - Show all watched wallets
 events - Toggle event types for a wallet
+positions - Show open positions and PnL
 status - Show connection status
 ```
 
@@ -79,13 +80,14 @@ python bot.py
 ## Commands
 
 ```
-/start          -- usage info
-/help           -- show available commands
-/watch <addr>   -- start watching a wallet
-/unwatch <addr> -- stop watching a wallet
-/list           -- show all watched wallets and their enabled events
-/events <addr>  -- toggle which event types you get notified about
-/status         -- WebSocket connection status and wallet count
+/start             -- usage info
+/help              -- show available commands
+/watch <addr>      -- start watching a wallet
+/unwatch <addr>    -- stop watching a wallet
+/list              -- show all watched wallets and their enabled events
+/events <addr>     -- toggle which event types you get notified about
+/positions [addr]  -- show open positions and PnL (all wallets if no address given)
+/status            -- WebSocket connection status and wallet count
 ```
 
 ## Event types
