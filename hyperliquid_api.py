@@ -98,6 +98,7 @@ def _build_position(position: dict, prices: dict[str, float], dex: str) -> dict 
         "margin_used": margin_used,
         "unrealized_pnl": position.get("unrealizedPnl"),
         "return_on_equity": position.get("returnOnEquity"),
+        "funding_since_open": position.get("cumFunding", {}).get("sinceOpen"),
     }
 
 

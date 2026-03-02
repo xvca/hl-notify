@@ -147,6 +147,7 @@ def format_positions(positions: list[dict], wallet: str, report: dict | None = N
         margin_used = pos.get("margin_used")
         pnl = pos.get("unrealized_pnl")
         roe = pos.get("return_on_equity")
+        funding_since_open = pos.get("funding_since_open")
 
         lines.append(f"{emoji} {side} {format_number(abs(szi), 4)} {coin}")
 
@@ -174,6 +175,11 @@ def format_positions(positions: list[dict], wallet: str, report: dict | None = N
             pnl_val = float(pnl)
             sign = "+" if pnl_val > 0 else ""
             lines.append(f"   PnL: {sign}${format_number(pnl_val)}")
+
+        if funding_since_open:
+            funding_val = float(funding_since_open) * -1
+            sign = "+" if funding_val > 0 else ""
+            lines.append(f"   Funding (open): {sign}${format_number(funding_val)}")
 
         if roe:
             roe_val = float(roe)

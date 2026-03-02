@@ -53,6 +53,7 @@ def test_get_positions_report_formats_hip3_positions(monkeypatch):
                             "szi": "1.5",
                             "entryPx": "10",
                             "leverage": {"value": 5},
+                            "cumFunding": {"sinceOpen": "-0.5"},
                             "unrealizedPnl": "2.0",
                             "returnOnEquity": "0.1",
                         }
@@ -76,3 +77,4 @@ def test_get_positions_report_formats_hip3_positions(monkeypatch):
     assert len(report["positions"]) == 1
     assert report["positions"][0]["display_coin"] == "builder-a:HIP3"
     assert report["positions"][0]["current_px"] == 12.0
+    assert report["positions"][0]["funding_since_open"] == "-0.5"

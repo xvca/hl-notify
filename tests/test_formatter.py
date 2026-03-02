@@ -31,6 +31,7 @@ def test_format_positions_shows_report_message_and_display_coin():
                 "leverage": {"type": "cross", "value": 5}.get("value"),
                 "margin_used": 5.0,
                 "unrealized_pnl": "1.0",
+                "funding_since_open": "-0.75",
                 "return_on_equity": "0.2",
             }
         ],
@@ -41,3 +42,4 @@ def test_format_positions_shows_report_message_and_display_coin():
     assert "builder:HIP3" in text
     assert "Some DEX queries failed" in text
     assert "Leverage: 5x" in text
+    assert "Funding (open): +$0.75" in text

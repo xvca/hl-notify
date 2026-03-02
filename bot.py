@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 import re
 
-from telegram import Update
+from telegram import BotCommand, Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -68,6 +68,22 @@ def compute_build_id() -> str:
 
 
 APP_BUILD_ID = compute_build_id()
+BOT_COMMANDS = [
+    BotCommand("help", "Show available commands"),
+    BotCommand("watch", "Add a wallet to monitor"),
+    BotCommand("unwatch", "Remove a wallet"),
+    BotCommand("list", "Show watched wallets"),
+    BotCommand("events", "Toggle event types for a wallet"),
+    BotCommand("positions", "Show open positions and PnL"),
+    BotCommand("status", "Show WebSocket status and build info"),
+]
+
+
+def format_command_help() -> str:
+    return "\n".join(
+        f"/{command.command} - {command.description}"
+        for command in BOT_COMMANDS
+    )
 
 
 def format_uptime() -> str:
@@ -144,13 +160,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Hyperliquid Notify Bot\n\n"
         "Commands:\n"
-        "/help — Show this help\n"
-        "/watch <address> — Add wallet\n"
-        "/unwatch <address> — Remove wallet\n"
-        "/list — Show watched wallets\n"
-        "/events <address> — Toggle event types\n"
-        "/positions [address] — Show open positions\n"
-        "/status — Connection status"
+        f"{format_command_help()}\n\n"
+        "Use /watch <address> and /events <address> with a wallet address."
     )
 
 
@@ -297,6 +308,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(application: Application):
     global ws_manager, fill_aggregator
     await init_http_session()
+    await application.bot.set_my_commands(BOT_COMMANDS)
     fill_aggregator = FillAggregator(on_batch=send_aggregated_fills)
     ws_manager = WSManager(
         on_event=send_notification,
