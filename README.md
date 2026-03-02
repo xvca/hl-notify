@@ -1,6 +1,6 @@
 # hl-notify
 
-A single-user Telegram bot that watches Hyperliquid L1 wallets over WebSocket and sends you notifications when things happen -- fills, liquidations, funding payments, deposits/withdrawals.
+A single-user Telegram bot that watches Hyperliquid L1 wallets over WebSocket and sends you notifications when things happen: fills, liquidations, funding payments, and deposits or withdrawals.
 
 You can monitor as many wallets as you want. Add them with `/watch`, configure notification preferences per wallet, and the bot handles all the subscriptions over one WebSocket connection.
 
@@ -18,19 +18,7 @@ Talk to [@BotFather](https://t.me/BotFather) on Telegram, create a bot, grab the
 
 You also need your Telegram user ID. Send a message to [@userinfobot](https://t.me/userinfobot) to get it.
 
-**Optional: Set up command menu**
-
-To see commands when you type `/` in Telegram, send `/setcommands` to @BotFather, select your bot, then paste:
-
-```
-help - Show available commands
-watch - Add a wallet to monitor
-unwatch - Remove a wallet
-list - Show all watched wallets
-events - Toggle event types for a wallet
-positions - Show open positions and PnL
-status - Show connection status
-```
+The bot sets its Telegram command menu automatically when it starts, so commands should appear as soon as you type `/` in chat.
 
 ### 2. Configure
 
@@ -47,11 +35,19 @@ TELEGRAM_USER_ID=987654321
 
 ### 3a. Run with Docker
 
+Build and start the bot:
+
 ```sh
 docker compose up --build -d
 ```
 
 Wallet config persists in `./data/config.json` via a volume mount.
+
+If you update the code, rebuild so the running container picks up the latest changes:
+
+```sh
+docker compose up --build -d
+```
 
 ### 3b. Run without Docker
 
@@ -70,39 +66,58 @@ uv sync
 uv run bot.py
 ```
 
+If you update the code locally, restart the bot with `uv run bot.py`.
+
 ## Commands
 
-```
-/start             -- usage info
-/help              -- show available commands
-/watch <addr>      -- start watching a wallet
-/unwatch <addr>    -- stop watching a wallet
-/list              -- show all watched wallets and their enabled events
-/events <addr>     -- toggle which event types you get notified about
-/positions [addr]  -- show open positions and PnL (all wallets if no address given)
-/status            -- WebSocket status, build ID, uptime, and wallet count
-```
+`/start` - usage info
+
+`/help` - show available commands
+
+`/watch <addr>` - start watching a wallet
+
+`/unwatch <addr>` - stop watching a wallet
+
+`/list` - show all watched wallets and their enabled events
+
+`/events <addr>` - toggle which event types you get notified about
+
+`/positions [addr]` - show open positions, current price, leverage, margin, unrealized PnL, and funding since open. If no address is provided, the bot checks every watched wallet. This also includes HIP-3 positions.
+
+`/status` - show WebSocket status, HTTP session status, build ID, uptime, and wallet count
 
 ## Event types
 
 Each wallet has four event types you can toggle independently with `/events`:
 
-- **fills** -- trade executions (buy/sell, price, size, direction, PnL on close)
-- **liquidations** -- liquidation events
-- **funding** -- hourly funding rate payments
-- **transfers** -- deposits, withdrawals, internal transfers
+- **fills**: trade executions (buy or sell, price, size, direction, PnL on close)
+- **liquidations**: liquidation events
+- **funding**: hourly funding rate payments
+- **transfers**: deposits, withdrawals, and internal transfers
 
 All four are on by default when you add a wallet.
 
+## Notes
+
+- The bot reuses one shared HTTP session for Hyperliquid API calls instead of opening a new connection for every request.
+- If `/positions` comes back empty, the response now includes a little more context, including partial API failures and a hint when an agent or signer wallet may be the issue.
+- Telegram command suggestions are synced automatically on startup, so you usually do not need to manage them manually in BotFather.
+
 ## Project structure
 
-```
-bot.py           -- entry point, Telegram command handlers
-ws_manager.py    -- WebSocket connection, subscriptions, reconnect logic
-formatter.py     -- turns raw events into readable messages
-storage.py       -- JSON persistence for wallet list and event prefs
-config.py        -- env var loading
-```
+`bot.py` - entry point and Telegram command handlers
+
+`ws_manager.py` - WebSocket connection, subscriptions, and reconnect logic
+
+`hyperliquid_api.py` - Hyperliquid REST helpers and position lookups
+
+`formatter.py` - turns raw events into readable messages
+
+`storage.py` - JSON persistence for wallet list and event preferences
+
+`config.py` - environment variable loading
+
+`tests/` - focused tests for formatting and Hyperliquid API parsing
 
 ## Dependencies
 
