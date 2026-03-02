@@ -1,5 +1,8 @@
 import asyncio
+from datetime import datetime, timezone
+import hashlib
 import logging
+from pathlib import Path
 import re
 
 from telegram import Update
@@ -24,7 +27,13 @@ from formatter import (
 )
 from ws_manager import WSManager
 from aggregator import FillAggregator
-from hyperliquid_api import get_position_info, get_all_positions
+from hyperliquid_api import (
+    close_http_session,
+    get_position_info,
+    get_positions_report,
+    http_session_ready,
+    init_http_session,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +46,39 @@ ETH_ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 ws_manager: WSManager | None = None
 fill_aggregator: FillAggregator | None = None
 app: Application | None = None
+STARTED_AT = datetime.now(timezone.utc)
+
+
+def compute_build_id() -> str:
+    root = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    files = sorted(root.glob("*.py"))
+    extras = [root / "pyproject.toml", root / "uv.lock"]
+
+    try:
+        for path in [*files, *extras]:
+            if not path.exists():
+                continue
+            digest.update(path.name.encode("utf-8"))
+            digest.update(path.read_bytes())
+    except OSError:
+        return "unknown"
+
+    return digest.hexdigest()[:8]
+
+
+APP_BUILD_ID = compute_build_id()
+
+
+def format_uptime() -> str:
+    elapsed = int((datetime.now(timezone.utc) - STARTED_AT).total_seconds())
+    hours, remainder = divmod(elapsed, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
 
 
 def auth(func):
@@ -232,8 +274,8 @@ async def cmd_positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Fetching positions...")
 
     for wallet in wallets_to_check:
-        positions = await get_all_positions(wallet)
-        text = format_positions(positions, wallet)
+        report = await get_positions_report(wallet)
+        text = format_positions(report["positions"], wallet, report)
         await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
 
 
@@ -242,13 +284,19 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_count = len(storage.get_wallets())
     connected = ws_manager.connected if ws_manager else False
     status = "🟢 Connected" if connected else "🔴 Disconnected"
+    http_status = "🟢 Ready" if http_session_ready() else "🟡 Lazy"
     await update.message.reply_text(
-        f"WebSocket: {status}\nWallets: {wallet_count}"
+        f"WebSocket: {status}\n"
+        f"HTTP: {http_status}\n"
+        f"Wallets: {wallet_count}\n"
+        f"Build: {APP_BUILD_ID}\n"
+        f"Uptime: {format_uptime()}"
     )
 
 
 async def post_init(application: Application):
     global ws_manager, fill_aggregator
+    await init_http_session()
     fill_aggregator = FillAggregator(on_batch=send_aggregated_fills)
     ws_manager = WSManager(
         on_event=send_notification,
@@ -266,6 +314,7 @@ async def post_init(application: Application):
 async def post_shutdown(application: Application):
     if ws_manager:
         await ws_manager.stop()
+    await close_http_session()
 
 
 def main():

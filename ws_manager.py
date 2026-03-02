@@ -11,6 +11,8 @@ import storage
 
 logger = logging.getLogger(__name__)
 
+# Hyperliquid's user-scoped feeds are account-wide; these subscriptions do
+# not take a dex parameter, so the same channels cover HIP-3 positions too.
 SUBSCRIPTION_TYPES = [
     "userFills",
     "userFundings",
@@ -131,9 +133,6 @@ class WSManager:
         data = msg.get("data")
         if not channel or not data:
             return
-
-        subscription = msg.get("data", {})
-        user = subscription.get("user", "").lower() if isinstance(subscription, dict) else ""
 
         if channel == "userFills":
             wallet = data.get("user", "").lower()

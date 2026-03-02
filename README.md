@@ -55,26 +55,19 @@ Wallet config persists in `./data/config.json` via a volume mount.
 
 ### 3b. Run without Docker
 
-Using pyenv (recommended):
+Using `uv` (recommended):
 
 ```sh
-# Install pyenv if you don't have it
-# macOS: brew install pyenv
-# Linux: curl https://pyenv.run | bash
-
-pyenv install 3.12
-pyenv local 3.12
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python bot.py
+uv sync
+uv run bot.py
 ```
 
-Or without pyenv:
+If you want `uv` to manage the Python version too:
 
 ```sh
-pip install -r requirements.txt
-python bot.py
+uv python install 3.12
+uv sync
+uv run bot.py
 ```
 
 ## Commands
@@ -87,7 +80,7 @@ python bot.py
 /list              -- show all watched wallets and their enabled events
 /events <addr>     -- toggle which event types you get notified about
 /positions [addr]  -- show open positions and PnL (all wallets if no address given)
-/status            -- WebSocket connection status and wallet count
+/status            -- WebSocket status, build ID, uptime, and wallet count
 ```
 
 ## Event types
@@ -109,6 +102,17 @@ ws_manager.py    -- WebSocket connection, subscriptions, reconnect logic
 formatter.py     -- turns raw events into readable messages
 storage.py       -- JSON persistence for wallet list and event prefs
 config.py        -- env var loading
+```
+
+## Dependencies
+
+This project uses `uv` with [pyproject.toml](/Users/lv/Developer/Repos/Projects/hl-notify/pyproject.toml) for dependency management.
+
+## Testing
+
+```sh
+uv sync --group dev
+uv run --group dev pytest
 ```
 
 ## Security

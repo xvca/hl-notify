@@ -117,14 +117,25 @@ def format_transfer(transfer: dict, wallet: str) -> str:
     return "\n".join(lines)
 
 
-def format_positions(positions: list[dict], wallet: str) -> str:
+def format_positions(positions: list[dict], wallet: str, report: dict | None = None) -> str:
     if not positions:
-        return f"No open positions for {short_addr(wallet)}"
+        lines = [f"No open positions for {short_addr(wallet)}"]
+        if report:
+            message = report.get("message")
+            hint = report.get("hint")
+            if message:
+                lines.append("")
+                lines.append(message)
+            if hint:
+                lines.append(hint)
+        return "\n".join(lines)
 
     lines = [f"Positions for {short_addr(wallet)}:\n"]
+    if report and report.get("message"):
+        lines.append(f"{report['message']}\n")
 
     for pos in positions:
-        coin = pos.get("coin", "???")
+        coin = pos.get("display_coin") or pos.get("coin", "???")
         szi = float(pos.get("szi", 0))
         side = "LONG" if szi > 0 else "SHORT"
         emoji = "📈" if szi > 0 else "📉"
