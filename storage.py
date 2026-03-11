@@ -12,6 +12,26 @@ DEFAULT_EVENTS = {
     "transfers": True,
 }
 
+DEFAULT_FUNDING_FILTERS = {
+    "annualized_threshold": None,
+    "usdc_threshold": None,
+}
+
+
+def _normalize_wallet(wallet: dict) -> dict:
+    wallet.setdefault("label", None)
+    wallet["events"] = {**DEFAULT_EVENTS, **wallet.get("events", {})}
+
+    funding_filters = wallet.get("funding_filters", {})
+    normalized_filters = {**DEFAULT_FUNDING_FILTERS}
+    normalized_filters.update({
+        k: funding_filters.get(k)
+        for k in DEFAULT_FUNDING_FILTERS
+        if k in funding_filters
+    })
+    wallet["funding_filters"] = normalized_filters
+    return wallet
+
 
 def _load() -> dict:
     if not CONFIG_PATH.exists():
@@ -27,7 +47,11 @@ def _save(data: dict):
 
 
 def get_wallets() -> dict:
-    return _load()["wallets"]
+    wallets = _load()["wallets"]
+    return {
+        address: _normalize_wallet(wallet)
+        for address, wallet in wallets.items()
+    }
 
 
 def add_wallet(address: str) -> bool:
@@ -38,6 +62,7 @@ def add_wallet(address: str) -> bool:
     data["wallets"][address] = {
         "label": None,
         "events": {**DEFAULT_EVENTS},
+        "funding_filters": {**DEFAULT_FUNDING_FILTERS},
     }
     _save(data)
     return True
@@ -77,3 +102,32 @@ def is_event_enabled(address: str, event_type: str) -> bool:
     if events is None:
         return False
     return events.get(event_type, False)
+
+
+def get_funding_filters(address: str) -> dict | None:
+    address = address.lower()
+    wallets = get_wallets()
+    if address not in wallets:
+        return None
+    return wallets[address]["funding_filters"]
+
+
+def set_funding_filters(
+    address: str,
+    annualized_threshold: float | None,
+    usdc_threshold: float | None,
+) -> dict | None:
+    address = address.lower()
+    data = _load()
+    wallet = data["wallets"].get(address)
+    if not wallet:
+        return None
+
+    normalized = _normalize_wallet(wallet)
+    normalized["funding_filters"] = {
+        "annualized_threshold": annualized_threshold,
+        "usdc_threshold": usdc_threshold,
+    }
+    data["wallets"][address] = normalized
+    _save(data)
+    return normalized["funding_filters"]

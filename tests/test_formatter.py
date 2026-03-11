@@ -1,4 +1,4 @@
-from formatter import format_positions
+from formatter import format_funding, format_positions
 
 # Public example wallet for test fixtures only; these tests use mocked data and
 # do not depend on the address having live positions.
@@ -41,5 +41,21 @@ def test_format_positions_shows_report_message_and_display_coin():
 
     assert "builder:HIP3" in text
     assert "Some DEX queries failed" in text
-    assert "Leverage: 5x" in text
-    assert "Funding (open): +$0.75" in text
+    assert "<b>Leverage:</b> 5x" in text
+    assert "<b>Funding (open):</b> +$0.75" in text
+    assert "<b>Net PnL:</b> +$1.75" in text
+
+
+def test_format_funding_uses_annualized_rate():
+    text = format_funding(
+        {
+            "coin": "cash:USA500",
+            "usdc": "-0.57",
+            "fundingRate": "-0.0000208125",
+        },
+        HLP_VAULT_ADDRESS,
+    )
+
+    assert "<b>Funding cash:USA500</b>" in text
+    assert "<b>Payment:</b> $-0.57" in text
+    assert "<b>Rate (annualized):</b> -18.23%" in text

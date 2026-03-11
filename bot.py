@@ -74,6 +74,7 @@ BOT_COMMANDS = [
     BotCommand("unwatch", "Remove a wallet"),
     BotCommand("list", "Show watched wallets"),
     BotCommand("events", "Toggle event types for a wallet"),
+    BotCommand("fundingfilter", "View or update funding alert thresholds"),
     BotCommand("positions", "Show open positions and PnL"),
     BotCommand("status", "Show WebSocket status and build info"),
 ]
@@ -95,6 +96,91 @@ def format_uptime() -> str:
     if minutes:
         return f"{minutes}m {seconds}s"
     return f"{seconds}s"
+
+
+def parse_optional_threshold(raw: str) -> float | None:
+    if raw.lower() == "off":
+        return None
+
+    value = float(raw)
+    if value < 0:
+        raise ValueError("Thresholds must be non-negative")
+    return value
+
+
+def format_threshold(value: float | None, suffix: str = "") -> str:
+    if value is None:
+        return "off"
+    if suffix:
+        return f"{value:g}{suffix}"
+    return f"{value:g}"
+
+
+def format_funding_rule(filters: dict) -> str:
+    annualized_threshold = filters.get("annualized_threshold")
+    usdc_threshold = filters.get("usdc_threshold")
+
+    if annualized_threshold is None and usdc_threshold is None:
+        return "notify on every funding event"
+
+    if annualized_threshold is None:
+        return f"notify only when payment is at least ${usdc_threshold:g}"
+
+    if usdc_threshold is None:
+        return (
+            "notify only when annualized funding is at least "
+            f"{annualized_threshold:g}%"
+        )
+
+    return (
+        "notify when annualized funding is at least "
+        f"{annualized_threshold:g}% or payment is at least ${usdc_threshold:g}"
+    )
+
+
+def should_send_funding_notification(wallet: str, funding: dict) -> bool:
+    filters = storage.get_funding_filters(wallet)
+    if not filters:
+        return False
+
+    annualized_threshold = filters.get("annualized_threshold")
+    usdc_threshold = filters.get("usdc_threshold")
+
+    if annualized_threshold is None and usdc_threshold is None:
+        return True
+
+    triggered = False
+
+    if usdc_threshold is not None:
+        try:
+            triggered = abs(float(funding.get("usdc", 0))) >= float(usdc_threshold)
+        except (ValueError, TypeError):
+            pass
+
+    if annualized_threshold is not None:
+        try:
+            annualized = abs(float(funding.get("fundingRate", 0))) * 24 * 365 * 100
+            triggered = triggered or annualized >= float(annualized_threshold)
+        except (ValueError, TypeError):
+            pass
+
+    return triggered
+
+
+def format_funding_config(address: str, filters: dict) -> str:
+    annualized = format_threshold(filters.get("annualized_threshold"), "%")
+    usdc = format_threshold(filters.get("usdc_threshold"))
+    if usdc != "off":
+        usdc = f"${usdc}"
+
+    return (
+        f"Funding alerts for {short_addr(address)}\n"
+        f"Annualized threshold: {annualized}\n"
+        f"USD threshold: {usdc}\n"
+        f"Rule: {format_funding_rule(filters)}\n"
+        f"Usage: /fundingfilter {address} <annualized_pct|off> <usd|off>\n"
+        f"Example: /fundingfilter {address} off 5"
+    )
 
 
 def auth(func):
@@ -124,8 +210,8 @@ async def send_aggregated_fills(wallet: str, fills: list[dict]):
     try:
         await app.bot.send_message(
             chat_id=TELEGRAM_USER_ID,
-            text=f"```\n{text}\n```",
-            parse_mode="Markdown",
+            text=text,
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Failed to send aggregated fill notification: {e}")
@@ -133,6 +219,8 @@ async def send_aggregated_fills(wallet: str, fills: list[dict]):
 
 async def send_notification(wallet: str, event_type: str, data: dict):
     if not storage.is_event_enabled(wallet, event_type):
+        return
+    if event_type == "funding" and not should_send_funding_notification(wallet, data):
         return
 
     formatters = {
@@ -148,8 +236,8 @@ async def send_notification(wallet: str, event_type: str, data: dict):
     try:
         await app.bot.send_message(
             chat_id=TELEGRAM_USER_ID,
-            text=f"```\n{text}\n```",
-            parse_mode="Markdown",
+            text=text,
+            parse_mode="HTML",
         )
     except Exception as e:
         logger.error(f"Failed to send notification: {e}")
@@ -161,7 +249,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hyperliquid Notify Bot\n\n"
         "Commands:\n"
         f"{format_command_help()}\n\n"
-        "Use /watch <address> and /events <address> with a wallet address."
+        "Use /watch <address>, /events <address>, and /fundingfilter <address> with a wallet address."
     )
 
 
@@ -240,6 +328,50 @@ async def cmd_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @auth
+async def cmd_fundingfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args or not ETH_ADDRESS_RE.match(context.args[0]):
+        await update.message.reply_text(
+            "Usage: /fundingfilter <0x address> [<annualized_pct|off> <usd|off>]"
+        )
+        return
+
+    address = context.args[0].lower()
+    if address not in storage.get_wallets():
+        await update.message.reply_text("Wallet not found. /watch it first.")
+        return
+
+    if len(context.args) == 1:
+        filters = storage.get_funding_filters(address)
+        await update.message.reply_text(format_funding_config(address, filters))
+        return
+
+    if len(context.args) != 3:
+        await update.message.reply_text(
+            "Usage: /fundingfilter <0x address> [<annualized_pct|off> <usd|off>]"
+        )
+        return
+
+    try:
+        annualized_threshold = parse_optional_threshold(context.args[1])
+        usdc_threshold = parse_optional_threshold(context.args[2])
+    except ValueError:
+        await update.message.reply_text(
+            "Thresholds must be non-negative numbers or 'off'."
+        )
+        return
+
+    filters = storage.set_funding_filters(
+        address,
+        annualized_threshold=annualized_threshold,
+        usdc_threshold=usdc_threshold,
+    )
+    await update.message.reply_text(
+        "Updated funding alert settings.\n\n"
+        f"{format_funding_config(address, filters)}"
+    )
+
+
+@auth
 async def handle_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -287,7 +419,7 @@ async def cmd_positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for wallet in wallets_to_check:
         report = await get_positions_report(wallet)
         text = format_positions(report["positions"], wallet, report)
-        await update.message.reply_text(f"```\n{text}\n```", parse_mode="Markdown")
+        await update.message.reply_text(text, parse_mode="HTML")
 
 
 @auth
@@ -345,6 +477,7 @@ def main():
     app.add_handler(CommandHandler("unwatch", cmd_unwatch))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("events", cmd_events))
+    app.add_handler(CommandHandler("fundingfilter", cmd_fundingfilter))
     app.add_handler(CommandHandler("positions", cmd_positions))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CallbackQueryHandler(handle_toggle))

@@ -82,6 +82,10 @@ If you update the code locally, restart the bot with `uv run bot.py`.
 
 `/events <addr>` - toggle which event types you get notified about
 
+`/fundingfilter <addr>` - show current funding alert thresholds for a wallet
+
+`/fundingfilter <addr> <annualized_pct|off> <usd|off>` - update funding alert thresholds for a wallet. The bot sends funding notifications if either enabled threshold is hit. If both are `off`, funding updates are unfiltered.
+
 `/positions [addr]` - show open positions, current price, leverage, margin, unrealized PnL, and funding since open. If no address is provided, the bot checks every watched wallet. This also includes HIP-3 positions.
 
 `/status` - show WebSocket status, HTTP session status, build ID, uptime, and wallet count
@@ -97,11 +101,27 @@ Each wallet has four event types you can toggle independently with `/events`:
 
 All four are on by default when you add a wallet.
 
+Funding alerts can also be filtered per wallet. Each wallet has two optional thresholds:
+
+- annualized rate threshold
+- USD payment threshold
+
+If either enabled threshold is hit, the funding notification is sent. Use `off` to disable one side of the filter. If both thresholds are `off`, the bot sends every funding update for that wallet. For example:
+
+```sh
+/fundingfilter 0xabc... off 5
+```
+
+That setup sends funding alerts only when the payment is at least `$5`.
+
+New wallets start with both thresholds set to `off`, so funding alerts are unfiltered until you choose otherwise.
+
 ## Notes
 
 - The bot reuses one shared HTTP session for Hyperliquid API calls instead of opening a new connection for every request.
 - If `/positions` comes back empty, the response now includes a little more context, including partial API failures and a hint when an agent or signer wallet may be the issue.
 - Telegram command suggestions are synced automatically on startup, so you usually do not need to manage them manually in BotFather.
+- Funding notifications show annualized rates instead of raw hourly rates.
 
 ## Project structure
 
