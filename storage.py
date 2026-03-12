@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 from config import DATA_DIR
 
@@ -16,6 +15,14 @@ DEFAULT_FUNDING_FILTERS = {
     "annualized_threshold": None,
     "usdc_threshold": None,
 }
+
+
+def normalize_label(label: str) -> str:
+    return " ".join(label.strip().split())
+
+
+def label_key(label: str) -> str:
+    return normalize_label(label).casefold()
 
 
 def _normalize_wallet(wallet: dict) -> dict:
@@ -54,13 +61,18 @@ def get_wallets() -> dict:
     }
 
 
-def add_wallet(address: str) -> bool:
+def add_wallet(address: str, label: str | None = None) -> bool:
     address = address.lower()
     data = _load()
     if address in data["wallets"]:
         return False
+
+    normalized_label = normalize_label(label) if label else None
+    if normalized_label and find_wallet_by_label(normalized_label):
+        return False
+
     data["wallets"][address] = {
-        "label": None,
+        "label": normalized_label,
         "events": {**DEFAULT_EVENTS},
         "funding_filters": {**DEFAULT_FUNDING_FILTERS},
     }
@@ -102,6 +114,46 @@ def is_event_enabled(address: str, event_type: str) -> bool:
     if events is None:
         return False
     return events.get(event_type, False)
+
+
+def get_label(address: str) -> str | None:
+    address = address.lower()
+    wallets = get_wallets()
+    if address not in wallets:
+        return None
+    return wallets[address].get("label")
+
+
+def set_label(address: str, label: str | None) -> str | None | bool:
+    address = address.lower()
+    data = _load()
+    wallet = data["wallets"].get(address)
+    if not wallet:
+        return None
+
+    normalized_label = normalize_label(label) if label else None
+    if normalized_label:
+        existing = find_wallet_by_label(normalized_label)
+        if existing and existing != address:
+            return False
+
+    normalized = _normalize_wallet(wallet)
+    normalized["label"] = normalized_label
+    data["wallets"][address] = normalized
+    _save(data)
+    return normalized_label
+
+
+def find_wallet_by_label(label: str) -> str | None:
+    wanted = label_key(label)
+    if not wanted:
+        return None
+
+    for address, wallet in get_wallets().items():
+        existing_label = wallet.get("label")
+        if existing_label and label_key(existing_label) == wanted:
+            return address
+    return None
 
 
 def get_funding_filters(address: str) -> dict | None:

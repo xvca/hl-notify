@@ -31,7 +31,6 @@ class WSManager:
         self._ws = None
         self._running = False
         self._task: asyncio.Task | None = None
-        self._subscribed_wallets: set[str] = set()
         self._subscription_times: dict[str, float] = {}
 
     async def start(self):
@@ -57,14 +56,12 @@ class WSManager:
 
     async def subscribe(self, wallet: str):
         wallet = wallet.lower()
-        self._subscribed_wallets.add(wallet)
         self._subscription_times[wallet] = time.time()
         if self.connected:
             await self._send_subscriptions(wallet, subscribe=True)
 
     async def unsubscribe(self, wallet: str):
         wallet = wallet.lower()
-        self._subscribed_wallets.discard(wallet)
         self._subscription_times.pop(wallet, None)
         if self.connected:
             await self._send_subscriptions(wallet, subscribe=False)
@@ -83,7 +80,6 @@ class WSManager:
 
     async def _resubscribe_all(self):
         wallets = set(storage.get_wallets().keys())
-        self._subscribed_wallets = wallets
         sub_time = time.time()
         for wallet in wallets:
             self._subscription_times[wallet] = sub_time

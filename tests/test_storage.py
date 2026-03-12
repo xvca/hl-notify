@@ -37,3 +37,19 @@ def test_set_funding_filters_supports_off(monkeypatch, tmp_path):
         "annualized_threshold": None,
         "usdc_threshold": 7.5,
     }
+
+
+def test_add_wallet_with_label_and_lookup(monkeypatch, tmp_path):
+    storage = load_storage_module(monkeypatch, tmp_path)
+
+    assert storage.add_wallet("0xabc", label="Main Wallet")
+    assert storage.get_label("0xabc") == "Main Wallet"
+    assert storage.find_wallet_by_label("main wallet") == "0xabc"
+
+
+def test_set_label_rejects_duplicate(monkeypatch, tmp_path):
+    storage = load_storage_module(monkeypatch, tmp_path)
+    storage.add_wallet("0xabc", label="One")
+    storage.add_wallet("0xdef", label="Two")
+
+    assert storage.set_label("0xdef", "One") is False

@@ -15,7 +15,6 @@ class FillAggregator:
 
     async def add_fill(self, wallet: str, fill: dict):
         coin = fill.get("coin", "")
-        side = fill.get("side", "")
         direction = fill.get("dir", "")
 
         key = (wallet, coin, direction)

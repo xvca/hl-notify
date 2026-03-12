@@ -228,8 +228,3 @@ async def get_market_prices(dex: str = "") -> dict[str, float]:
 
 async def get_positions_report(wallet: str) -> dict:
     return await _collect_positions(wallet)
-
-
-async def get_all_positions(wallet: str) -> list[dict]:
-    report = await _collect_positions(wallet)
-    return report["positions"]

@@ -76,17 +76,23 @@ If you update the code locally, restart the bot with `uv run bot.py`.
 
 `/watch <addr>` - start watching a wallet
 
+`/watch <addr> <label>` - start watching a wallet and set a label right away
+
+`/label <addr|label>` - show the current label for a wallet
+
+`/label <addr|label> <new label|clear>` - set or clear a wallet label
+
 `/unwatch <addr>` - stop watching a wallet
 
 `/list` - show all watched wallets and their enabled events
 
-`/events <addr>` - toggle which event types you get notified about
+`/events <addr|label>` - toggle which event types you get notified about
 
-`/fundingfilter <addr>` - show current funding alert thresholds for a wallet
+`/fundingfilter <addr|label>` - show current funding alert thresholds for a wallet
 
-`/fundingfilter <addr> <annualized_pct|off> <usd|off>` - update funding alert thresholds for a wallet. The bot sends funding notifications if either enabled threshold is hit. If both are `off`, funding updates are unfiltered.
+`/fundingfilter <addr|label> <annualized_pct|off> <usd|off>` - update funding alert thresholds for a wallet. The bot sends funding notifications if either enabled threshold is hit. If both are `off`, funding updates are unfiltered.
 
-`/positions [addr]` - show open positions, current price, leverage, margin, unrealized PnL, and funding since open. If no address is provided, the bot checks every watched wallet. This also includes HIP-3 positions.
+`/positions [addr|label]` - show open positions, current price, leverage, margin, unrealized PnL, and funding since open. If no address is provided, the bot checks every watched wallet. This also includes HIP-3 positions.
 
 `/status` - show WebSocket status, HTTP session status, build ID, uptime, and wallet count
 
@@ -100,6 +106,8 @@ Each wallet has four event types you can toggle independently with `/events`:
 - **transfers**: deposits, withdrawals, and internal transfers
 
 All four are on by default when you add a wallet.
+
+Wallet labels are optional, but they make multi-wallet setups much easier to manage. Once a label is set, you can use it anywhere the bot accepts an address.
 
 Funding alerts can also be filtered per wallet. Each wallet has two optional thresholds:
 
@@ -149,6 +157,8 @@ This project uses `uv` with [pyproject.toml](/Users/lv/Developer/Repos/Projects/
 uv sync --group dev
 uv run --group dev pytest
 ```
+
+GitHub Actions also runs the test suite and a compile check on every push and pull request.
 
 ## Security
 

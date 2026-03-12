@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone
 import hashlib
 import logging
@@ -17,7 +16,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID
 import storage
 from formatter import (
-    format_fill,
     format_liquidation,
     format_funding,
     format_transfer,
@@ -71,6 +69,7 @@ APP_BUILD_ID = compute_build_id()
 BOT_COMMANDS = [
     BotCommand("help", "Show available commands"),
     BotCommand("watch", "Add a wallet to monitor"),
+    BotCommand("label", "Set or clear a wallet label"),
     BotCommand("unwatch", "Remove a wallet"),
     BotCommand("list", "Show watched wallets"),
     BotCommand("events", "Toggle event types for a wallet"),
@@ -96,6 +95,19 @@ def format_uptime() -> str:
     if minutes:
         return f"{minutes}m {seconds}s"
     return f"{seconds}s"
+
+
+def format_wallet_name(address: str) -> str:
+    label = storage.get_label(address)
+    if label:
+        return f"{label} ({short_addr(address)})"
+    return short_addr(address)
+
+
+def resolve_wallet_ref(ref: str) -> str | None:
+    if ETH_ADDRESS_RE.match(ref):
+        return ref.lower()
+    return storage.find_wallet_by_label(ref)
 
 
 def parse_optional_threshold(raw: str) -> float | None:
@@ -172,9 +184,10 @@ def format_funding_config(address: str, filters: dict) -> str:
     usdc = format_threshold(filters.get("usdc_threshold"))
     if usdc != "off":
         usdc = f"${usdc}"
+    display_name = format_wallet_name(address)
 
     return (
-        f"Funding alerts for {short_addr(address)}\n"
+        f"Funding alerts for {display_name}\n"
         f"Annualized threshold: {annualized}\n"
         f"USD threshold: {usdc}\n"
         f"Rule: {format_funding_rule(filters)}\n"
@@ -249,7 +262,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Hyperliquid Notify Bot\n\n"
         "Commands:\n"
         f"{format_command_help()}\n\n"
-        "Use /watch <address>, /events <address>, and /fundingfilter <address> with a wallet address."
+        "Use /watch <address> [label] to add wallets, and you can use either an address or a label with /label, /events, /fundingfilter, /positions, and /unwatch."
     )
 
 
@@ -261,27 +274,76 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @auth
 async def cmd_watch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or not ETH_ADDRESS_RE.match(context.args[0]):
-        await update.message.reply_text("Usage: /watch <0x address>")
+        await update.message.reply_text("Usage: /watch <0x address> [label]")
         return
 
     address = context.args[0].lower()
-    if storage.add_wallet(address):
+    label = " ".join(context.args[1:]).strip() or None
+
+    if storage.add_wallet(address, label=label):
         await ws_manager.subscribe(address)
-        await update.message.reply_text(f"Watching {short_addr(address)}")
+        await update.message.reply_text(f"Watching {format_wallet_name(address)}")
     else:
-        await update.message.reply_text(f"Already watching {short_addr(address)}")
+        await update.message.reply_text(
+            f"Already watching {format_wallet_name(address)} or that label is already in use."
+        )
+
+
+@auth
+async def cmd_label(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Usage: /label <address|label> <new label|clear>")
+        return
+
+    address = resolve_wallet_ref(context.args[0])
+    if not address:
+        await update.message.reply_text("Wallet not found. /watch it first.")
+        return
+
+    if len(context.args) == 1:
+        current = storage.get_label(address)
+        current_text = current if current else "none"
+        await update.message.reply_text(
+            f"Label for {short_addr(address)}: {current_text}\n"
+            "Usage: /label <address|label> <new label|clear>"
+        )
+        return
+
+    raw_label = " ".join(context.args[1:]).strip()
+    new_label = None if raw_label.lower() == "clear" else raw_label
+    result = storage.set_label(address, new_label)
+    if result is False:
+        await update.message.reply_text("That label is already in use.")
+        return
+
+    if result is None:
+        await update.message.reply_text("Wallet not found. /watch it first.")
+        return
+
+    if result:
+        await update.message.reply_text(
+            f"Updated label for {short_addr(address)} to {result}"
+        )
+    else:
+        await update.message.reply_text(
+            f"Cleared label for {short_addr(address)}"
+        )
 
 
 @auth
 async def cmd_unwatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args or not ETH_ADDRESS_RE.match(context.args[0]):
-        await update.message.reply_text("Usage: /unwatch <0x address>")
+    if not context.args:
+        await update.message.reply_text("Usage: /unwatch <address|label>")
         return
 
-    address = context.args[0].lower()
+    address = resolve_wallet_ref(context.args[0])
+    if not address:
+        await update.message.reply_text("Wallet not found")
+        return
+
     if storage.remove_wallet(address):
         await ws_manager.unsubscribe(address)
-        await update.message.reply_text(f"Unwatched {short_addr(address)}")
+        await update.message.reply_text(f"Unwatched {format_wallet_name(address)}")
     else:
         await update.message.reply_text("Wallet not found")
 
@@ -296,17 +358,24 @@ async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = []
     for addr, info in wallets.items():
         enabled = [k for k, v in info["events"].items() if v]
-        lines.append(f"• {short_addr(addr)}  [{', '.join(enabled)}]")
+        wallet_name = info.get("label") or short_addr(addr)
+        if info.get("label"):
+            wallet_name = f"{wallet_name} ({short_addr(addr)})"
+        lines.append(f"• {wallet_name}  [{', '.join(enabled)}]")
     await update.message.reply_text("\n".join(lines))
 
 
 @auth
 async def cmd_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args or not ETH_ADDRESS_RE.match(context.args[0]):
-        await update.message.reply_text("Usage: /events <0x address>")
+    if not context.args:
+        await update.message.reply_text("Usage: /events <address|label>")
         return
 
-    address = context.args[0].lower()
+    address = resolve_wallet_ref(context.args[0])
+    if not address:
+        await update.message.reply_text("Wallet not found. /watch it first.")
+        return
+
     events = storage.get_events(address)
     if events is None:
         await update.message.reply_text("Wallet not found. /watch it first.")
@@ -322,21 +391,21 @@ async def cmd_events(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
     await update.message.reply_text(
-        f"Event toggles for {short_addr(address)}:",
+        f"Event toggles for {format_wallet_name(address)}:",
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
 
 @auth
 async def cmd_fundingfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args or not ETH_ADDRESS_RE.match(context.args[0]):
+    if not context.args:
         await update.message.reply_text(
-            "Usage: /fundingfilter <0x address> [<annualized_pct|off> <usd|off>]"
+            "Usage: /fundingfilter <address|label> [<annualized_pct|off> <usd|off>]"
         )
         return
 
-    address = context.args[0].lower()
-    if address not in storage.get_wallets():
+    address = resolve_wallet_ref(context.args[0])
+    if not address:
         await update.message.reply_text("Wallet not found. /watch it first.")
         return
 
@@ -347,7 +416,7 @@ async def cmd_fundingfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(context.args) != 3:
         await update.message.reply_text(
-            "Usage: /fundingfilter <0x address> [<annualized_pct|off> <usd|off>]"
+            "Usage: /fundingfilter <address|label> [<annualized_pct|off> <usd|off>]"
         )
         return
 
@@ -401,9 +470,9 @@ async def handle_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @auth
 async def cmd_positions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args and ETH_ADDRESS_RE.match(context.args[0]):
-        address = context.args[0].lower()
-        if address not in storage.get_wallets():
+    if context.args:
+        address = resolve_wallet_ref(context.args[0])
+        if not address:
             await update.message.reply_text("Wallet not found. /watch it first.")
             return
         wallets_to_check = [address]
@@ -474,6 +543,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("watch", cmd_watch))
+    app.add_handler(CommandHandler("label", cmd_label))
     app.add_handler(CommandHandler("unwatch", cmd_unwatch))
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("events", cmd_events))
